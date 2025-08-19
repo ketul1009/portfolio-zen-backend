@@ -142,10 +142,11 @@ func (a *App) initRouter() *gin.Engine {
 
 	// Initialize handlers
 	ltpHandler := handlers.NewLTPHandler(a.broker, a.db, a.logger)
+	mutualFundsHandler := handlers.NewMutualFundsHandler(a.db, a.logger)
 	healthHandler := handlers.NewHealthHandler(a.db, a.broker, a.logger)
 
 	// Setup routes
-	router.SetupRoutes(r, ltpHandler, healthHandler)
+	router.SetupRoutes(r, ltpHandler, mutualFundsHandler, healthHandler)
 
 	return r
 }

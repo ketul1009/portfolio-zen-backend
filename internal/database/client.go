@@ -1,9 +1,13 @@
 package database
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 
 	"portfolio-zen-backend/internal/config"
@@ -80,7 +84,7 @@ func (c *Client) GetTokenForSymbol(symbol string) (string, error) {
 // GetSymbolToken fetches both symbol and token for a given symbol
 func (c *Client) GetSymbolToken(symbol string) (*SymbolToken, error) {
 	var symbolToken SymbolToken
-	err := c.DB.QueryRow("SELECT symbol, token FROM symbol_tokens WHERE symbol = $1", symbol).Scan(&symbolToken.Symbol, &symbolToken.Token)
+	err := c.DB.QueryRow("SELECT symbol, token FROM stocks_list WHERE symbol = $1", symbol).Scan(&symbolToken.Symbol, &symbolToken.Token)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("symbol not found: %s", symbol)
@@ -96,7 +100,7 @@ func (c *Client) GetSymbolToken(symbol string) (*SymbolToken, error) {
 
 // GetAllSymbols fetches all available symbols
 func (c *Client) GetAllSymbols() ([]SymbolToken, error) {
-	rows, err := c.DB.Query("SELECT symbol, token FROM symbol_tokens ORDER BY symbol")
+	rows, err := c.DB.Query("SELECT symbol, token FROM stocks_list ORDER BY symbol")
 	if err != nil {
 		if c.logger != nil {
 			c.logger.LogDatabaseError("GetAllSymbols", err)
@@ -130,7 +134,7 @@ func (c *Client) GetAllSymbols() ([]SymbolToken, error) {
 // SearchSymbols searches for symbols by partial match
 func (c *Client) SearchSymbols(query string) ([]SymbolToken, error) {
 	searchQuery := "%" + query + "%"
-	rows, err := c.DB.Query("SELECT symbol, token FROM symbol_tokens WHERE symbol ILIKE $1 ORDER BY symbol LIMIT 50", searchQuery)
+	rows, err := c.DB.Query("SELECT symbol, token FROM stocks_list WHERE symbol ILIKE $1 ORDER BY symbol LIMIT 50", searchQuery)
 	if err != nil {
 		if c.logger != nil {
 			c.logger.LogDatabaseError("SearchSymbols", err)
@@ -172,4 +176,36 @@ func (c *Client) HealthCheck() error {
 // Close closes the database connection
 func (c *Client) Close() error {
 	return c.DB.Close()
+}
+
+// GetMutualFundHoldings fetches the holdings for a given search_id
+func (c *Client) GetMutualFundHoldings(search_id string) (map[string]interface{}, error) {
+	url := "https://mf-openweb-search.dhan.co/SectorAllocation"
+	response, err := http.Post(url, "application/json", bytes.NewBuffer([]byte(fmt.Sprintf(`
+	{"entity_id":"DhanWeb","source":"W","token_id":"9c5688945773312281d7","data":{"scheme_isin":"%s"}}`, search_id))))
+	if err != nil {
+		return nil, fmt.Errorf("error getting mutual fund holdings: %w", err)
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	fmt.Println(string(body))
+
+	var responseData map[string]interface{}
+	if err := json.Unmarshal(body, &responseData); err != nil {
+		return nil, fmt.Errorf("error unmarshaling response: %w", err)
+	}
+
+	data, ok := responseData["data"]
+	if !ok {
+		return nil, fmt.Errorf("data not found in response")
+	}
+
+	return map[string]interface{}{
+		"holdings": data,
+	}, nil
 }

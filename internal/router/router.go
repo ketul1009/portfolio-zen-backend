@@ -8,7 +8,7 @@ import (
 )
 
 // SetupRoutes configures all the routes for the application
-func SetupRoutes(r *gin.Engine, ltpHandler *handlers.LTPHandler, healthHandler *handlers.HealthHandler) {
+func SetupRoutes(r *gin.Engine, ltpHandler *handlers.LTPHandler, mutualFundsHandler *handlers.MutualFundsHandler, healthHandler *handlers.HealthHandler) {
 	// API v1 group
 	v1 := r.Group("/api/v1")
 	{
@@ -17,6 +17,12 @@ func SetupRoutes(r *gin.Engine, ltpHandler *handlers.LTPHandler, healthHandler *
 		{
 			ltp.GET("/:symbol", ltpHandler.GetLTP)
 			ltp.POST("/batch", ltpHandler.GetMultipleLTP)
+		}
+
+		// Mutual Fund endpoints
+		mutualFunds := v1.Group("/mutual-funds")
+		{
+			mutualFunds.GET("/:search_id", mutualFundsHandler.GetMutualFundHoldings)
 		}
 
 		// Symbol endpoints
