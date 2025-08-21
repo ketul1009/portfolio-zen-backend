@@ -23,6 +23,10 @@ func main() {
 
 	// Create and run the application
 	app := app.New(cfg)
+
+	// Start the worker in a separate goroutine
+	go worker()
+
 	if err := app.Run(); err != nil {
 		log.Fatalf("Application failed: %v", err)
 	}

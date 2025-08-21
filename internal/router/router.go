@@ -8,7 +8,7 @@ import (
 )
 
 // SetupRoutes configures all the routes for the application
-func SetupRoutes(r *gin.Engine, ltpHandler *handlers.LTPHandler, mutualFundsHandler *handlers.MutualFundsHandler, healthHandler *handlers.HealthHandler) {
+func SetupRoutes(r *gin.Engine, ltpHandler *handlers.LTPHandler, mutualFundsHandler *handlers.MutualFundsHandler, healthHandler *handlers.HealthHandler, taskHandler *handlers.TaskHandler) {
 	// API v1 group
 	v1 := r.Group("/api/v1")
 	{
@@ -30,6 +30,12 @@ func SetupRoutes(r *gin.Engine, ltpHandler *handlers.LTPHandler, mutualFundsHand
 		{
 			symbols.GET("", ltpHandler.GetAllSymbols)
 			symbols.GET("/search", ltpHandler.SearchSymbols)
+		}
+
+		// Task endpoints
+		task := v1.Group("/task")
+		{
+			task.POST("/fetch-prices", taskHandler.FetchPrices)
 		}
 
 		// Protected endpoints (example)

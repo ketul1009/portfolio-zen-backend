@@ -17,6 +17,7 @@ import (
 	"portfolio-zen-backend/internal/services"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hibiken/asynq"
 )
 
 // App represents the main application
@@ -144,9 +145,10 @@ func (a *App) initRouter() *gin.Engine {
 	ltpHandler := handlers.NewLTPHandler(a.broker, a.db, a.logger)
 	mutualFundsHandler := handlers.NewMutualFundsHandler(a.db, a.logger)
 	healthHandler := handlers.NewHealthHandler(a.db, a.broker, a.logger)
+	taskHandler := handlers.NewTaskHandler(asynq.NewClient(asynq.RedisClientOpt{Addr: "127.0.0.1:6379"}), a.logger)
 
 	// Setup routes
-	router.SetupRoutes(r, ltpHandler, mutualFundsHandler, healthHandler)
+	router.SetupRoutes(r, ltpHandler, mutualFundsHandler, healthHandler, taskHandler)
 
 	return r
 }
