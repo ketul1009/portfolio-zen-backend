@@ -21,13 +21,13 @@ func NewMutualFundsHandler(db *database.Client, logger *logger.Logger) *MutualFu
 	}
 }
 
-func (h *MutualFundsHandler) GetMutualFundHoldings(c *gin.Context) {
+func (h *MutualFundsHandler) GetMutualFundNav(c *gin.Context) {
 	search_id := c.Param("search_id")
-	holdings, err := h.db.GetMutualFundHoldings(search_id)
+	nav, err := h.db.GetMutualFundNav(search_id)
 	if err != nil {
 		h.logger.Error("Error getting mutual fund holdings: %v", err)
 		responses.SendError(c, http.StatusInternalServerError, "Error getting mutual fund holdings")
 		return
 	}
-	responses.SendSuccess(c, holdings)
+	responses.SendSuccess(c, nav)
 }

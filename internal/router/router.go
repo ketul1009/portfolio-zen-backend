@@ -22,7 +22,7 @@ func SetupRoutes(r *gin.Engine, ltpHandler *handlers.LTPHandler, mutualFundsHand
 		// Mutual Fund endpoints
 		mutualFunds := v1.Group("/mutual-funds")
 		{
-			mutualFunds.GET("/:search_id", mutualFundsHandler.GetMutualFundHoldings)
+			mutualFunds.GET("/nav/:search_id", mutualFundsHandler.GetMutualFundNav)
 		}
 
 		// Symbol endpoints

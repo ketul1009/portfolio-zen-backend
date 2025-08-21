@@ -1,7 +1,6 @@
 package database
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -178,11 +177,10 @@ func (c *Client) Close() error {
 	return c.DB.Close()
 }
 
-// GetMutualFundHoldings fetches the holdings for a given search_id
-func (c *Client) GetMutualFundHoldings(search_id string) (map[string]interface{}, error) {
-	url := "https://mf-openweb-search.dhan.co/SectorAllocation"
-	response, err := http.Post(url, "application/json", bytes.NewBuffer([]byte(fmt.Sprintf(`
-	{"entity_id":"DhanWeb","source":"W","token_id":"9c5688945773312281d7","data":{"scheme_isin":"%s"}}`, search_id))))
+// GetMutualFundNav fetches the holdings for a given search_id
+func (c *Client) GetMutualFundNav(search_id string) (map[string]interface{}, error) {
+	url := "https://mf.captnemo.in/nav/"
+	response, err := http.Get(url + search_id)
 	if err != nil {
 		return nil, fmt.Errorf("error getting mutual fund holdings: %w", err)
 	}
@@ -193,19 +191,13 @@ func (c *Client) GetMutualFundHoldings(search_id string) (map[string]interface{}
 		return nil, fmt.Errorf("error reading response body: %w", err)
 	}
 
-	fmt.Println(string(body))
-
 	var responseData map[string]interface{}
 	if err := json.Unmarshal(body, &responseData); err != nil {
 		return nil, fmt.Errorf("error unmarshaling response: %w", err)
 	}
 
-	data, ok := responseData["data"]
-	if !ok {
-		return nil, fmt.Errorf("data not found in response")
-	}
+	// Remove historical_nav key from response data
+	delete(responseData, "historical_nav")
 
-	return map[string]interface{}{
-		"holdings": data,
-	}, nil
+	return responseData, nil
 }
