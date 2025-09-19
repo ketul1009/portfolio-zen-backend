@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"portfolio-zen-backend/internal/config"
@@ -27,6 +28,13 @@ type Client struct {
 type SymbolToken struct {
 	Symbol string `json:"symbol"`
 	Token  string `json:"token"`
+}
+
+// AssetType
+type Asset struct {
+	ID     string `json:"id"`
+	Asset  string `json:"asset"`
+	Symbol string `json:"symbol"`
 }
 
 // NewClient creates a new database client
@@ -165,6 +173,87 @@ func (c *Client) SearchSymbols(query string) ([]SymbolToken, error) {
 	return symbols, nil
 }
 
+// Get Assets all assets in Portfolio
+func (c *Client) GetHoldings(portfolioId string) ([]Asset, error) {
+	rows, err := c.DB.Query("SELECT id, symbol, asset_type FROM assets WHERE portfolio_id = $1", portfolioId)
+	if err != nil {
+		if c.logger != nil {
+			c.logger.LogDatabaseError("GetHoldings", err)
+		}
+		return nil, fmt.Errorf("error querying database: %w", err)
+	}
+
+	defer rows.Close()
+
+	var assets []Asset
+	for rows.Next() {
+		var asset Asset
+		if err := rows.Scan(&asset.ID, &asset.Symbol, &asset.Asset); err != nil {
+			if c.logger != nil {
+				c.logger.LogDatabaseError("GetHoldings scan", err)
+			}
+			return nil, fmt.Errorf("error scanning row: %w", err)
+		}
+		assets = append(assets, asset)
+	}
+
+	if err := rows.Err(); err != nil {
+		if c.logger != nil {
+			c.logger.LogDatabaseError("SearchSymbols rows", err)
+		}
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return assets, nil
+
+}
+
+func (c *Client) GetTokens(symbols []string) (map[string]string, error) {
+	if len(symbols) == 0 {
+		return make(map[string]string), nil
+	}
+
+	// Build the query with proper placeholders
+	placeholders := make([]string, len(symbols))
+	args := make([]interface{}, len(symbols))
+	for i, symbol := range symbols {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = symbol
+	}
+
+	query := fmt.Sprintf("SELECT symbol, token FROM stocks_list WHERE symbol IN (%s)", strings.Join(placeholders, ","))
+
+	rows, err := c.DB.Query(query, args...)
+	if err != nil {
+		if c.logger != nil {
+			c.logger.LogDatabaseError("GetTokens", err)
+		}
+		return nil, err
+	}
+	defer rows.Close()
+
+	symbolToToken := make(map[string]string)
+	for rows.Next() {
+		var symbol, token string
+		if err := rows.Scan(&symbol, &token); err != nil {
+			if c.logger != nil {
+				c.logger.LogDatabaseError("GetTokens scan", err)
+			}
+			return nil, err
+		}
+		symbolToToken[symbol] = token
+	}
+
+	if err := rows.Err(); err != nil {
+		if c.logger != nil {
+			c.logger.LogDatabaseError("GetTokens rows", err)
+		}
+		return nil, err
+	}
+
+	return symbolToToken, nil
+}
+
 // HealthCheck checks if the database is healthy
 func (c *Client) HealthCheck() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -208,4 +297,52 @@ func (c *Client) GetMutualFundHoldings(search_id string) (map[string]interface{}
 	return map[string]interface{}{
 		"holdings": data,
 	}, nil
+}
+
+// BulkUpdateCurrentPrices updates current_price for multiple assets in a single transaction
+func (c *Client) BulkUpdateCurrentPrices(priceData map[string]float64) error {
+	if len(priceData) == 0 {
+		return nil
+	}
+
+	// Start a transaction
+	tx, err := c.DB.Begin()
+	if err != nil {
+		if c.logger != nil {
+			c.logger.LogDatabaseError("BulkUpdateCurrentPrices Begin", err)
+		}
+		return fmt.Errorf("error starting transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Prepare the bulk update statement
+	stmt, err := tx.Prepare("UPDATE assets SET current_price = $1 WHERE symbol = $2")
+	if err != nil {
+		if c.logger != nil {
+			c.logger.LogDatabaseError("BulkUpdateCurrentPrices Prepare", err)
+		}
+		return fmt.Errorf("error preparing statement: %w", err)
+	}
+	defer stmt.Close()
+
+	// Execute updates for each symbol
+	for symbol, price := range priceData {
+		_, err := stmt.Exec(price, symbol)
+		if err != nil {
+			if c.logger != nil {
+				c.logger.LogDatabaseError("BulkUpdateCurrentPrices Exec", err)
+			}
+			return fmt.Errorf("error updating price for symbol %s: %w", symbol, err)
+		}
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		if c.logger != nil {
+			c.logger.LogDatabaseError("BulkUpdateCurrentPrices Commit", err)
+		}
+		return fmt.Errorf("error committing transaction: %w", err)
+	}
+
+	return nil
 }
