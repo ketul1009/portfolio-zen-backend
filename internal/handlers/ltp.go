@@ -151,3 +151,15 @@ func (h *LTPHandler) GetAllSymbols(c *gin.Context) {
 
 	responses.SendSuccess(c, symbols)
 }
+
+// GetMutualFundLTP handles GET /api/mutual-funds/:symbol requests
+func (h *LTPHandler) GetMutualFundLTP(c *gin.Context) {
+	symbol := c.Param("symbol")
+	ltp, err := h.broker.GetMutualFundLTP(symbol)
+	if err != nil {
+		h.logger.Error("Error fetching mutual fund LTP: %v", err)
+		responses.SendError(c, http.StatusInternalServerError, "error fetching mutual fund LTP")
+		return
+	}
+	responses.SendSuccess(c, ltp)
+}

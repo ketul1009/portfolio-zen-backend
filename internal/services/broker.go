@@ -1,7 +1,10 @@
 package services
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 
 	"portfolio-zen-backend/internal/config"
@@ -123,6 +126,26 @@ func (bs *BrokerService) GetMultipleLTP(exchange string, symbols []string, token
 	}
 
 	return results, nil
+}
+
+func (bs *BrokerService) GetMutualFundLTP(symbol string) (float64, error) {
+	url := "https://mf.captnemo.in/nav/" + symbol
+	response, err := http.Get(url)
+	if err != nil {
+		return 0, fmt.Errorf("error fetching LTP: %w", err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return 0, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	var responseData map[string]interface{}
+	if err := json.Unmarshal(body, &responseData); err != nil {
+		return 0, fmt.Errorf("error unmarshaling response: %w", err)
+	}
+
+	return responseData["nav"].(float64), nil
 }
 
 // HealthCheck checks if the broker service is healthy

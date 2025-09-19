@@ -17,15 +17,17 @@ import (
 	"portfolio-zen-backend/internal/services"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
 )
 
 // App represents the main application
 type App struct {
-	config *config.Config
-	logger *logger.Logger
-	db     *database.Client
-	broker *services.BrokerService
-	server *http.Server
+	config      *config.Config
+	logger      *logger.Logger
+	db          *database.Client
+	broker      *services.BrokerService
+	server      *http.Server
+	redisClient *redis.Client
 }
 
 // New creates a new application instance
@@ -52,6 +54,15 @@ func (a *App) Run() error {
 	if err := a.initBrokerService(); err != nil {
 		return fmt.Errorf("failed to initialize broker service: %w", err)
 	}
+
+	// Initialize Redis client
+	a.redisClient = redis.NewClient(&redis.Options{
+		Addr: os.Getenv("REDIS_ADDR"), // e.g. "localhost:6379"
+	})
+
+	// Initialize worker service
+	workerService := services.NewWorkerService(a.redisClient, a.logger)
+	go workerService.Start(a.broker, a.db)
 
 	// Initialize router
 	router := a.initRouter()
@@ -144,9 +155,10 @@ func (a *App) initRouter() *gin.Engine {
 	ltpHandler := handlers.NewLTPHandler(a.broker, a.db, a.logger)
 	mutualFundsHandler := handlers.NewMutualFundsHandler(a.db, a.logger)
 	healthHandler := handlers.NewHealthHandler(a.db, a.broker, a.logger)
+	backgroundTaskHandler := handlers.NewBackgroundTaskHandler(a.db, a.logger, a.redisClient)
 
 	// Setup routes
-	router.SetupRoutes(r, ltpHandler, mutualFundsHandler, healthHandler)
+	router.SetupRoutes(r, ltpHandler, mutualFundsHandler, healthHandler, backgroundTaskHandler)
 
 	return r
 }
