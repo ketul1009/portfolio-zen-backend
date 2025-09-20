@@ -7,6 +7,8 @@ import (
 	"portfolio-zen-backend/internal/database"
 	"portfolio-zen-backend/internal/logger"
 	"portfolio-zen-backend/internal/responses"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
@@ -39,6 +41,7 @@ func NewBackgroundTaskHandler(db *database.Client, logger *logger.Logger, redisC
 
 func (h *BackgroundTasksHandler) FetchPrices(c *gin.Context) {
 	var request struct {
+		UserID      string `json:"user_id" binding:"required"`
 		PortfolioID string `json:"portfolio_id" binding:"required"`
 		Symbols     []struct {
 			ID        string `json:"id"`
@@ -62,10 +65,14 @@ func (h *BackgroundTasksHandler) FetchPrices(c *gin.Context) {
 	}
 
 	// Add job to Redis queue
-	job := Job{
+	job := database.Job{
 		ID:          uuid.New().String(),
+		UserID:      request.UserID,
 		PortfolioID: request.PortfolioID,
 		Data:        request.Symbols,
+		Status:      "pending",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 
 	// Serialize job to JSON before pushing to Redis
@@ -73,6 +80,18 @@ func (h *BackgroundTasksHandler) FetchPrices(c *gin.Context) {
 	if err != nil {
 		h.logger.Error("Error marshaling job: %v", err)
 		responses.SendError(c, http.StatusInternalServerError, "error creating job")
+		return
+	}
+
+	err = h.db.CreateJob(job)
+	if err != nil {
+		h.logger.Error("Error creating job: %v", err)
+		// Check if it's a foreign key constraint error (400) or other error (500)
+		if strings.Contains(err.Error(), "does not exist") {
+			responses.SendError(c, http.StatusBadRequest, err.Error())
+		} else {
+			responses.SendError(c, http.StatusInternalServerError, "error creating job")
+		}
 		return
 	}
 
@@ -85,5 +104,16 @@ func (h *BackgroundTasksHandler) FetchPrices(c *gin.Context) {
 	}
 
 	h.logger.Info("Successfully added job %s to queue", job.ID)
-	responses.SendSuccess(c, "Job added to queue")
+	responses.SendSuccess(c, map[string]string{"message": "Job added to queue", "job_id": job.ID})
+}
+
+func (h *BackgroundTasksHandler) GetJobStatus(c *gin.Context) {
+	jobID := c.Param("job_id")
+	job, err := h.db.GetJob(jobID)
+	if err != nil {
+		h.logger.Error("Error getting job status: %v", err)
+		responses.SendError(c, http.StatusInternalServerError, "failed to get job status")
+		return
+	}
+	responses.SendSuccess(c, map[string]string{"status": job.Status})
 }

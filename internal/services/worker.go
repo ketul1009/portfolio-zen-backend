@@ -132,6 +132,11 @@ func (w *WorkerService) Start(broker *BrokerService, db *database.Client) {
 			}
 		}
 
+		err = db.UpdateJobStatus(job.ID, "completed")
+		if err != nil {
+			w.logger.Error("Error updating job status: %v", err)
+		}
+
 		w.logger.Info("Completed job ID=%s", job.ID)
 	}
 }
