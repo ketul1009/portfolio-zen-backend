@@ -76,7 +76,14 @@ func (h *BackgroundTasksHandler) FetchPrices(c *gin.Context) {
 		return
 	}
 
-	h.redisClient.RPush(context.Background(), "jobs", jobJSON)
+	// Push job to Redis queue with error handling
+	err = h.redisClient.RPush(context.Background(), "jobs", jobJSON).Err()
+	if err != nil {
+		h.logger.Error("Error pushing job to Redis queue: %v", err)
+		responses.SendError(c, http.StatusInternalServerError, "failed to add job to queue")
+		return
+	}
 
+	h.logger.Info("Successfully added job %s to queue", job.ID)
 	responses.SendSuccess(c, "Job added to queue")
 }

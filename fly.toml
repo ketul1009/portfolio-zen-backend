@@ -1,0 +1,61 @@
+# fly.toml app configuration file generated for portfoli-zen-backend on 2025-09-19T23:35:44+05:30
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'portfoli-zen-backend'
+primary_region = 'bom'
+
+[build]
+
+[env]
+  PORT = "8000"
+  GIN_MODE = "release"
+  LOG_LEVEL = "info"
+  LOG_FORMAT = "json"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+[processes]
+  app = "./main"
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+
+# Health check configuration
+[checks]
+  [checks.health]
+    grace_period = "10s"
+    interval = "30s"
+    timeout = "5s"
+    http_path = "/health"
+    type = "http"
+
+  [checks.ready]
+    grace_period = "10s"
+    interval = "30s"
+    timeout = "5s"
+    http_path = "/ready"
+    type = "http"
+
+  [checks.live]
+    grace_period = "10s"
+    interval = "30s"
+    timeout = "5s"
+    http_path = "/live"
+    type = "http"

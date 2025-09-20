@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"portfolio-zen-backend/internal/config"
@@ -56,9 +57,9 @@ func (a *App) Run() error {
 	}
 
 	// Initialize Redis client
-	a.redisClient = redis.NewClient(&redis.Options{
-		Addr: os.Getenv("REDIS_ADDR"), // e.g. "localhost:6379"
-	})
+	if err := a.initRedis(); err != nil {
+		return fmt.Errorf("failed to initialize Redis: %w", err)
+	}
 
 	// Initialize worker service
 	workerService := services.NewWorkerService(a.redisClient, a.logger)
@@ -132,6 +133,55 @@ func (a *App) initBrokerService() error {
 	if err != nil {
 		return fmt.Errorf("failed to create broker service: %w", err)
 	}
+	return nil
+}
+
+// initRedis initializes the Redis client and validates connection
+func (a *App) initRedis() error {
+	redisAddr := os.Getenv("REDIS_ADDR")
+	redisPassword := os.Getenv("REDIS_PASSWORD")
+
+	if redisAddr == "" {
+		return fmt.Errorf("REDIS_ADDR environment variable is required")
+	}
+
+	// Build Redis URL - support both local and cloud Redis
+	var redisURL string
+	if strings.HasPrefix(redisAddr, "rediss://") || strings.HasPrefix(redisAddr, "redis://") {
+		// Already a complete URL
+		redisURL = redisAddr
+	} else {
+		// Determine protocol based on environment
+		// For local development, use redis:// (non-secure)
+		// For production (Upstash), use rediss:// (secure)
+		protocol := "redis://"
+		if os.Getenv("ENVIRONMENT") == "production" || os.Getenv("FLY_APP_NAME") != "" {
+			protocol = "rediss://"
+		}
+
+		if redisPassword != "" {
+			redisURL = fmt.Sprintf("%sdefault:%s@%s", protocol, redisPassword, redisAddr)
+		} else {
+			redisURL = fmt.Sprintf("%s%s", protocol, redisAddr)
+		}
+	}
+
+	// Parse Redis URL using the official method
+	opt, err := redis.ParseURL(redisURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse Redis URL: %w", err)
+	}
+
+	a.redisClient = redis.NewClient(opt)
+
+	// Test Redis connection
+	ctx := context.Background()
+	_, err = a.redisClient.Ping(ctx).Result()
+	if err != nil {
+		return fmt.Errorf("failed to connect to Redis at %s: %w", redisAddr, err)
+	}
+
+	a.logger.Info("Successfully connected to Redis at %s", redisAddr)
 	return nil
 }
 

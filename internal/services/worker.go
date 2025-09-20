@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"portfolio-zen-backend/internal/database"
 	"time"
 
@@ -39,11 +41,24 @@ func (w *WorkerService) Start(broker *BrokerService, db *database.Client) {
 	ctx := context.Background()
 	w.logger.Info("Worker started")
 
+	// Test Redis connection before starting the worker loop
+	_, err := w.redisClient.Ping(ctx).Result()
+	if err != nil {
+		w.logger.Error("Worker failed to connect to Redis: %v", err)
+		return
+	}
+	w.logger.Info("Worker connected to Redis successfully")
+
 	for {
-		// BRPOP blocks until a job arrives
-		res, err := w.redisClient.BRPop(ctx, 0*time.Second, "jobs").Result()
+		// BRPOP with 5-second timeout to avoid indefinite blocking
+		res, err := w.redisClient.BRPop(ctx, 5*time.Second, "jobs").Result()
 		if err != nil {
-			w.logger.Error("Error reading from queue: %v", err)
+			// Only log if it's not a timeout or EOF error (which are expected when no jobs)
+			if err != redis.Nil && !errors.Is(err, io.EOF) {
+				w.logger.Error("Error reading from queue: %v", err)
+			}
+			// Add a small delay before trying again to avoid busy waiting
+			time.Sleep(1 * time.Second)
 			continue
 		}
 		if len(res) < 2 {
@@ -104,6 +119,8 @@ func (w *WorkerService) Start(broker *BrokerService, db *database.Client) {
 				priceData[asset.Symbol] = ltp
 			}
 		}
+
+		w.logger.Info("Price data: %v", priceData)
 
 		// Bulk update all prices in a single transaction
 		if len(priceData) > 0 {

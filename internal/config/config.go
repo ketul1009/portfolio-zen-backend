@@ -105,26 +105,32 @@ func Load() (*Config, error) {
 
 // validate checks if required configuration values are present
 func (c *Config) validate() error {
+	var missingVars []string
+
 	if c.Database.User == "" {
-		return fmt.Errorf("DB_USER is required")
+		missingVars = append(missingVars, "DB_USER")
 	}
 	if c.Database.Password == "" {
-		return fmt.Errorf("DB_PASSWORD is required")
+		missingVars = append(missingVars, "DB_PASSWORD")
 	}
 	if c.Database.Name == "" {
-		return fmt.Errorf("DB_NAME is required")
+		missingVars = append(missingVars, "DB_NAME")
 	}
 	if c.Broker.Username == "" {
-		return fmt.Errorf("AONE_USERNAME is required")
+		missingVars = append(missingVars, "AONE_USERNAME")
 	}
 	if c.Broker.Password == "" {
-		return fmt.Errorf("AONE_PASSWORD is required")
+		missingVars = append(missingVars, "AONE_PASSWORD")
 	}
 	if c.Broker.APIKey == "" {
-		return fmt.Errorf("AONE_API_KEY is required")
+		missingVars = append(missingVars, "AONE_API_KEY")
 	}
 	if c.Broker.TOTPSecret == "" {
-		return fmt.Errorf("AONE_TOKEN is required")
+		missingVars = append(missingVars, "AONE_TOKEN")
+	}
+
+	if len(missingVars) > 0 {
+		return fmt.Errorf("missing required environment variables: %v. Please set them using 'fly secrets set' command", missingVars)
 	}
 	return nil
 }
