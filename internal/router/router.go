@@ -37,6 +37,7 @@ func SetupRoutes(r *gin.Engine, ltpHandler *handlers.LTPHandler, mutualFundsHand
 		backgroundTasks := v1.Group("/background-tasks")
 		{
 			backgroundTasks.POST("/fetch-prices", backgroundTasksHandler.FetchPrices)
+			backgroundTasks.GET("/job/:job_id", backgroundTasksHandler.GetJobStatus)
 		}
 
 		// Protected endpoints (example)

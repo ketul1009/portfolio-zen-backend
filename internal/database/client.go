@@ -37,6 +37,21 @@ type Asset struct {
 	Symbol string `json:"symbol"`
 }
 
+// Job represents a job in the database
+type Job struct {
+	ID          string    `json:"id"`
+	UserID      string    `json:"user_id"`
+	PortfolioID string    `json:"portfolio_id"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Data        []struct {
+		ID        string `json:"id"`
+		Symbol    string `json:"symbol"`
+		AssetType string `json:"asset_type"`
+	} `json:"data"`
+}
+
 // NewClient creates a new database client
 func NewClient(cfg config.DatabaseConfig) (*Client, error) {
 	// Create connection string
@@ -344,5 +359,61 @@ func (c *Client) BulkUpdateCurrentPrices(priceData map[string]float64) error {
 		return fmt.Errorf("error committing transaction: %w", err)
 	}
 
+	return nil
+}
+
+func (c *Client) CreateJob(job Job) error {
+	// Validate that both user and portfolio exist in a single query
+	var userExists, portfolioExists bool
+	err := c.DB.QueryRow(`
+		SELECT 
+			EXISTS(SELECT 1 FROM profiles WHERE user_id = $1),
+			EXISTS(SELECT 1 FROM portfolios WHERE id = $2)
+	`, job.UserID, job.PortfolioID).Scan(&userExists, &portfolioExists)
+
+	if err != nil {
+		if c.logger != nil {
+			c.logger.LogDatabaseError("CreateJob validation", err)
+		}
+		return fmt.Errorf("error validating references: %w", err)
+	}
+
+	if !userExists {
+		if c.logger != nil {
+			c.logger.Error("User with ID %s does not exist", job.UserID)
+		}
+		return fmt.Errorf("user with ID %s does not exist", job.UserID)
+	}
+	if !portfolioExists {
+		if c.logger != nil {
+			c.logger.Error("Portfolio with ID %s does not exist", job.PortfolioID)
+		}
+		return fmt.Errorf("portfolio with ID %s does not exist", job.PortfolioID)
+	}
+
+	_, err = c.DB.Exec("INSERT INTO jobs (id, user_id, portfolio_id, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)", job.ID, job.UserID, job.PortfolioID, job.Status, job.CreatedAt, job.UpdatedAt)
+	if err != nil {
+		if c.logger != nil {
+			c.logger.LogDatabaseError("CreateJob", err)
+		}
+		return fmt.Errorf("error creating job: %w", err)
+	}
+	return nil
+}
+
+func (c *Client) GetJob(jobID string) (Job, error) {
+	var job Job
+	err := c.DB.QueryRow("SELECT id, user_id, portfolio_id, status, created_at, updated_at FROM jobs WHERE id = $1", jobID).Scan(&job.ID, &job.UserID, &job.PortfolioID, &job.Status, &job.CreatedAt, &job.UpdatedAt)
+	if err != nil {
+		return Job{}, fmt.Errorf("error getting job: %w", err)
+	}
+	return job, nil
+}
+
+func (c *Client) UpdateJobStatus(jobID string, status string) error {
+	_, err := c.DB.Exec("UPDATE jobs SET status = $1 WHERE id = $2", status, jobID)
+	if err != nil {
+		return fmt.Errorf("error updating job status: %w", err)
+	}
 	return nil
 }
