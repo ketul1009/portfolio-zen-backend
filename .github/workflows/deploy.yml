@@ -16,9 +16,9 @@ jobs:
       - name: Deploy
         run: |
           if [ "${{ github.ref }}" == "refs/heads/release" ]; then
-            flyctl deploy -a portfolio-zen-backend-gamma --remote-only
+            flyctl deploy -a portfolio-zen-gamma --remote-only
           elif [ "${{ github.ref }}" == "refs/heads/master" ]; then
-            flyctl deploy -a portfolio-zen-backend --remote-only
+            flyctl deploy -a portfoli-zen-backend --remote-only
           fi
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
