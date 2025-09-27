@@ -50,6 +50,8 @@ type Job struct {
 		Symbol    string `json:"symbol"`
 		AssetType string `json:"asset_type"`
 	} `json:"data"`
+	FileURL string `json:"file_url"`
+	JobType string `json:"job_type"`
 }
 
 // NewClient creates a new database client
@@ -391,7 +393,7 @@ func (c *Client) CreateJob(job Job) error {
 		return fmt.Errorf("portfolio with ID %s does not exist", job.PortfolioID)
 	}
 
-	_, err = c.DB.Exec("INSERT INTO jobs (id, user_id, portfolio_id, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)", job.ID, job.UserID, job.PortfolioID, job.Status, job.CreatedAt, job.UpdatedAt)
+	_, err = c.DB.Exec("INSERT INTO jobs (id, user_id, portfolio_id, status, created_at, updated_at, job_type) VALUES ($1, $2, $3, $4, $5, $6, $7)", job.ID, job.UserID, job.PortfolioID, job.Status, job.CreatedAt, job.UpdatedAt, job.JobType)
 	if err != nil {
 		if c.logger != nil {
 			c.logger.LogDatabaseError("CreateJob", err)
@@ -403,7 +405,7 @@ func (c *Client) CreateJob(job Job) error {
 
 func (c *Client) GetJob(jobID string) (Job, error) {
 	var job Job
-	err := c.DB.QueryRow("SELECT id, user_id, portfolio_id, status, created_at, updated_at FROM jobs WHERE id = $1", jobID).Scan(&job.ID, &job.UserID, &job.PortfolioID, &job.Status, &job.CreatedAt, &job.UpdatedAt)
+	err := c.DB.QueryRow("SELECT id, user_id, portfolio_id, status, created_at, updated_at, job_type FROM jobs WHERE id = $1", jobID).Scan(&job.ID, &job.UserID, &job.PortfolioID, &job.Status, &job.CreatedAt, &job.UpdatedAt, &job.JobType)
 	if err != nil {
 		return Job{}, fmt.Errorf("error getting job: %w", err)
 	}
