@@ -1,0 +1,24 @@
+name: Deploy to Fly.io
+
+on:
+  push:
+    branches:
+      - release   # deploy to gamma
+      - master   # deploy to prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/release" ]; then
+            flyctl deploy -a portfolio-zen-backend-gamma --remote-only
+          elif [ "${{ github.ref }}" == "refs/heads/master" ]; then
+            flyctl deploy -a portfolio-zen-backend --remote-only
+          fi
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

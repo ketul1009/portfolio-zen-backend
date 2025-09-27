@@ -122,7 +122,6 @@ temp/
 
 # Kubernetes
 *.yaml
-*.yml
 !docker-compose.yml
 !kubernetes/
 
