@@ -10,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
@@ -19,6 +22,8 @@ type BackgroundTasksHandler struct {
 	db          *database.Client
 	logger      *logger.Logger
 	redisClient *redis.Client
+	sqsClient   *sqs.Client
+	sqsQueueURL string
 }
 
 type Job struct {
@@ -33,11 +38,13 @@ type Job struct {
 	JobType string `json:"job_type"`
 }
 
-func NewBackgroundTaskHandler(db *database.Client, logger *logger.Logger, redisClient *redis.Client) *BackgroundTasksHandler {
+func NewBackgroundTaskHandler(db *database.Client, logger *logger.Logger, redisClient *redis.Client, sqsClient *sqs.Client, sqsQueueURL string) *BackgroundTasksHandler {
 	return &BackgroundTasksHandler{
 		db:          db,
 		logger:      logger,
 		redisClient: redisClient,
+		sqsClient:   sqsClient,
+		sqsQueueURL: sqsQueueURL,
 	}
 }
 
@@ -135,7 +142,7 @@ func (h *BackgroundTasksHandler) UploadPortfolio(c *gin.Context) {
 		return
 	}
 
-	// Add job to Redis queue
+	// Create job entry in database
 	job := database.Job{
 		ID:          uuid.New().String(),
 		UserID:      request.UserID,
@@ -147,7 +154,7 @@ func (h *BackgroundTasksHandler) UploadPortfolio(c *gin.Context) {
 		JobType:     "upload_portfolio",
 	}
 
-	// Serialize job to JSON before pushing to Redis
+	// Serialize job to JSON before pushing to SQS
 	jobJSON, err := json.Marshal(job)
 	if err != nil {
 		h.logger.Error("Error marshaling job: %v", err)
@@ -167,13 +174,27 @@ func (h *BackgroundTasksHandler) UploadPortfolio(c *gin.Context) {
 		return
 	}
 
-	err = h.redisClient.RPush(context.Background(), "upload_portfolio_jobs", jobJSON).Err()
+	// Push job to SQS queue
+	_, err = h.sqsClient.SendMessage(context.Background(), &sqs.SendMessageInput{
+		QueueUrl:    aws.String(h.sqsQueueURL),
+		MessageBody: aws.String(string(jobJSON)),
+		MessageAttributes: map[string]types.MessageAttributeValue{
+			"JobType": {
+				DataType:    aws.String("String"),
+				StringValue: aws.String("upload_portfolio"),
+			},
+			"JobID": {
+				DataType:    aws.String("String"),
+				StringValue: aws.String(job.ID),
+			},
+		},
+	})
 	if err != nil {
-		h.logger.Error("Error pushing job to Redis queue: %v", err)
+		h.logger.Error("Error pushing job to SQS queue: %v", err)
 		responses.SendError(c, http.StatusInternalServerError, "failed to add job to queue")
 		return
 	}
 
-	h.logger.Info("Successfully added job %s to queue", job.ID)
+	h.logger.Info("Successfully added job %s to SQS queue", job.ID)
 	responses.SendSuccess(c, map[string]string{"message": "Job added to queue", "job_id": job.ID})
 }
