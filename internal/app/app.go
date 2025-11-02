@@ -17,6 +17,10 @@ import (
 	"portfolio-zen-backend/internal/router"
 	"portfolio-zen-backend/internal/services"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 )
@@ -29,6 +33,7 @@ type App struct {
 	broker      *services.BrokerService
 	server      *http.Server
 	redisClient *redis.Client
+	sqsClient   *sqs.Client
 }
 
 // New creates a new application instance
@@ -59,6 +64,11 @@ func (a *App) Run() error {
 	// Initialize Redis client
 	if err := a.initRedis(); err != nil {
 		return fmt.Errorf("failed to initialize Redis: %w", err)
+	}
+
+	// Initialize SQS client
+	if err := a.initSQS(); err != nil {
+		return fmt.Errorf("failed to initialize SQS: %w", err)
 	}
 
 	// Initialize worker service
@@ -205,10 +215,56 @@ func (a *App) initRouter() *gin.Engine {
 	ltpHandler := handlers.NewLTPHandler(a.broker, a.db, a.logger)
 	mutualFundsHandler := handlers.NewMutualFundsHandler(a.db, a.logger)
 	healthHandler := handlers.NewHealthHandler(a.db, a.broker, a.logger)
-	backgroundTaskHandler := handlers.NewBackgroundTaskHandler(a.db, a.logger, a.redisClient)
+
+	// Get active SQS config based on environment
+	activeSQSConfig := a.config.GetActiveSQSConfig()
+	backgroundTaskHandler := handlers.NewBackgroundTaskHandler(a.db, a.logger, a.redisClient, a.sqsClient, activeSQSConfig.QueueURL)
 
 	// Setup routes
 	router.SetupRoutes(r, ltpHandler, mutualFundsHandler, healthHandler, backgroundTaskHandler)
 
 	return r
+}
+
+// initSQS initializes the AWS SQS client
+func (a *App) initSQS() error {
+	ctx := context.Background()
+
+	// Get active SQS config based on environment
+	activeSQSConfig := a.config.GetActiveSQSConfig()
+
+	// Load AWS configuration
+	var cfg aws.Config
+	var err error
+
+	if activeSQSConfig.AccessKeyID != "" && activeSQSConfig.SecretAccessKey != "" {
+		// Use provided credentials
+		cfg, err = awsconfig.LoadDefaultConfig(ctx,
+			awsconfig.WithRegion(activeSQSConfig.Region),
+			awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+				activeSQSConfig.AccessKeyID,
+				activeSQSConfig.SecretAccessKey,
+				"",
+			)),
+		)
+	} else {
+		// Use default credential chain (IAM roles, etc.)
+		cfg, err = awsconfig.LoadDefaultConfig(ctx,
+			awsconfig.WithRegion(activeSQSConfig.Region),
+		)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	a.sqsClient = sqs.NewFromConfig(cfg)
+
+	// Validate SQS queue URL is set
+	if activeSQSConfig.QueueURL == "" {
+		return fmt.Errorf("SQS_QUEUE_URL environment variable is required for %s environment", a.config.Environment)
+	}
+
+	a.logger.Info("Successfully initialized SQS client for %s environment (region: %s)", a.config.Environment, activeSQSConfig.Region)
+	return nil
 }
