@@ -9,11 +9,13 @@ import (
 
 // Config holds all configuration for the application
 type Config struct {
-	Server    ServerConfig
-	Database  DatabaseConfig
-	Broker    BrokerConfig
-	RateLimit RateLimitConfig
-	Logging   LoggingConfig
+	Server      ServerConfig
+	Database    DatabaseConfig
+	Broker      BrokerConfig
+	RateLimit   RateLimitConfig
+	Logging     LoggingConfig
+	SQS         SQSConfigs
+	Environment string
 }
 
 // ServerConfig holds server-related configuration
@@ -58,6 +60,20 @@ type LoggingConfig struct {
 	Format string
 }
 
+// SQSConfig holds AWS SQS configuration
+type SQSConfig struct {
+	Region          string
+	QueueURL        string
+	AccessKeyID     string
+	SecretAccessKey string
+}
+
+// SQSConfigs holds SQS configurations for different environments
+type SQSConfigs struct {
+	Production SQSConfig
+	Gamma      SQSConfig
+}
+
 // Load loads configuration from environment variables
 func Load() (*Config, error) {
 	cfg := &Config{
@@ -93,6 +109,21 @@ func Load() (*Config, error) {
 			Level:  getEnv("LOG_LEVEL", "info"),
 			Format: getEnv("LOG_FORMAT", "json"),
 		},
+		SQS: SQSConfigs{
+			Production: SQSConfig{
+				Region:          getEnv("AWS_REGION_PROD", "us-east-1"),
+				QueueURL:        getEnv("SQS_QUEUE_URL_PROD", ""),
+				AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID_PROD", ""),
+				SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY_PROD", ""),
+			},
+			Gamma: SQSConfig{
+				Region:          getEnv("AWS_REGION_GAMMA", getEnv("AWS_REGION", "us-east-1")),
+				QueueURL:        getEnv("SQS_QUEUE_URL_GAMMA", getEnv("SQS_QUEUE_URL", "")),
+				AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID_GAMMA", getEnv("AWS_ACCESS_KEY_ID", "")),
+				SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY_GAMMA", getEnv("AWS_SECRET_ACCESS_KEY", "")),
+			},
+		},
+		Environment: getEnv("ENVIRONMENT", "gamma"),
 	}
 
 	// Validate required configuration
@@ -101,6 +132,14 @@ func Load() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// GetActiveSQSConfig returns the SQS configuration based on the current environment
+func (c *Config) GetActiveSQSConfig() SQSConfig {
+	if c.Environment == "PROD" {
+		return c.SQS.Production
+	}
+	return c.SQS.Gamma
 }
 
 // validate checks if required configuration values are present
