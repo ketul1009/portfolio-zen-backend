@@ -42,10 +42,11 @@ type DatabaseConfig struct {
 
 // BrokerConfig holds broker API configuration
 type BrokerConfig struct {
-	Username   string
-	Password   string
-	APIKey     string
-	TOTPSecret string
+	Username        string
+	Password        string
+	APIKey          string
+	TOTPSecret      string
+	CoinGeckoAPIKey string
 }
 
 // RateLimitConfig holds rate limiting configuration
@@ -96,10 +97,11 @@ func Load() (*Config, error) {
 			ConnMaxLifetime: getEnvAsDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
 		},
 		Broker: BrokerConfig{
-			Username:   getEnv("AONE_USERNAME", ""),
-			Password:   getEnv("AONE_PASSWORD", ""),
-			APIKey:     getEnv("AONE_API_KEY", ""),
-			TOTPSecret: getEnv("AONE_TOKEN", ""),
+			Username:        getEnv("AONE_USERNAME", ""),
+			Password:        getEnv("AONE_PASSWORD", ""),
+			APIKey:          getEnv("AONE_API_KEY", ""),
+			TOTPSecret:      getEnv("AONE_TOKEN", ""),
+			CoinGeckoAPIKey: getEnv("COINGECKO_API_KEY", ""),
 		},
 		RateLimit: RateLimitConfig{
 			RequestsPerMinute: getEnvAsInt("RATE_LIMIT_RPM", 60),

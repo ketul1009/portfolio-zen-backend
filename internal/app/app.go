@@ -215,13 +215,14 @@ func (a *App) initRouter() *gin.Engine {
 	ltpHandler := handlers.NewLTPHandler(a.broker, a.db, a.logger)
 	mutualFundsHandler := handlers.NewMutualFundsHandler(a.db, a.logger)
 	healthHandler := handlers.NewHealthHandler(a.db, a.broker, a.logger)
+	cryptoHandler := handlers.NewCryptoHandler(a.broker, a.logger)
 
 	// Get active SQS config based on environment
 	activeSQSConfig := a.config.GetActiveSQSConfig()
 	backgroundTaskHandler := handlers.NewBackgroundTaskHandler(a.db, a.logger, a.redisClient, a.sqsClient, activeSQSConfig.QueueURL)
 
 	// Setup routes
-	router.SetupRoutes(r, ltpHandler, mutualFundsHandler, healthHandler, backgroundTaskHandler)
+	router.SetupRoutes(r, ltpHandler, mutualFundsHandler, healthHandler, backgroundTaskHandler, cryptoHandler)
 
 	return r
 }

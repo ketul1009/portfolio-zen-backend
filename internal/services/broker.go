@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"portfolio-zen-backend/internal/config"
@@ -146,6 +147,128 @@ func (bs *BrokerService) GetMutualFundLTP(symbol string) (float64, error) {
 	}
 
 	return responseData["nav"].(float64), nil
+}
+
+// makeCoinGeckoRequest makes an HTTP request to CoinGecko API with the API key header
+func (bs *BrokerService) makeCoinGeckoRequest(url string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+
+	// Add CoinGecko API key header if available
+	if bs.config.CoinGeckoAPIKey != "" {
+		req.Header.Set("x-cg-demo-api-key", bs.config.CoinGeckoAPIKey)
+	}
+
+	client := &http.Client{}
+	response, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error making request: %w", err)
+	}
+
+	return response, nil
+}
+
+// GetCryptoPrice fetches the current price of a cryptocurrency in INR from CoinGecko
+func (bs *BrokerService) GetCryptoPrice(symbol string) (float64, error) {
+	// Normalize symbol to lowercase for CoinGecko API
+	symbolLower := strings.ToLower(symbol)
+
+	// CoinGecko API endpoint using symbols parameter
+	url := fmt.Sprintf("https://api.coingecko.com/api/v3/simple/price?symbols=%s&vs_currencies=inr", symbolLower)
+
+	response, err := bs.makeCoinGeckoRequest(url)
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusNotFound {
+		return 0, fmt.Errorf("cryptocurrency not found: %s", symbol)
+	}
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		return 0, fmt.Errorf("error fetching crypto price: status %d, body: %s", response.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return 0, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	var responseData map[string]map[string]float64
+	if err := json.Unmarshal(body, &responseData); err != nil {
+		return 0, fmt.Errorf("error unmarshaling response: %w", err)
+	}
+
+	// Check if symbol exists in response
+	coinData, exists := responseData[symbolLower]
+	if !exists {
+		return 0, fmt.Errorf("cryptocurrency not found: %s", symbol)
+	}
+
+	// Get INR price
+	price, exists := coinData["inr"]
+	if !exists {
+		return 0, fmt.Errorf("INR price not available for symbol: %s", symbol)
+	}
+
+	return price, nil
+}
+
+// GetMultipleCryptoPrices fetches prices for multiple cryptocurrencies in INR from CoinGecko
+func (bs *BrokerService) GetMultipleCryptoPrices(symbols []string) (map[string]float64, error) {
+	if len(symbols) == 0 {
+		return make(map[string]float64), nil
+	}
+
+	// Normalize symbols to lowercase and maintain mapping to original case
+	symbolsLower := make([]string, 0, len(symbols))
+	lowerToOriginalMap := make(map[string]string)
+	for _, symbol := range symbols {
+		symbolLower := strings.ToLower(symbol)
+		symbolsLower = append(symbolsLower, symbolLower)
+		lowerToOriginalMap[symbolLower] = symbol
+	}
+
+	// Join symbols with comma for CoinGecko API
+	symbolsStr := strings.Join(symbolsLower, ",")
+	url := fmt.Sprintf("https://api.coingecko.com/api/v3/simple/price?symbols=%s&vs_currencies=inr", symbolsStr)
+
+	response, err := bs.makeCoinGeckoRequest(url)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		return nil, fmt.Errorf("error fetching crypto prices: status %d, body: %s", response.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	var responseData map[string]map[string]float64
+	if err := json.Unmarshal(body, &responseData); err != nil {
+		return nil, fmt.Errorf("error unmarshaling response: %w", err)
+	}
+
+	// Convert response to map[string]float64 using original symbols
+	results := make(map[string]float64)
+	for symbolLower, coinData := range responseData {
+		if originalSymbol, exists := lowerToOriginalMap[symbolLower]; exists {
+			if price, priceExists := coinData["inr"]; priceExists {
+				results[originalSymbol] = price
+			}
+		}
+	}
+
+	return results, nil
 }
 
 // HealthCheck checks if the broker service is healthy
