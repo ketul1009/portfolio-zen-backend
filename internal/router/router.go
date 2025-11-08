@@ -8,7 +8,7 @@ import (
 )
 
 // SetupRoutes configures all the routes for the application
-func SetupRoutes(r *gin.Engine, ltpHandler *handlers.LTPHandler, mutualFundsHandler *handlers.MutualFundsHandler, healthHandler *handlers.HealthHandler, backgroundTasksHandler *handlers.BackgroundTasksHandler) {
+func SetupRoutes(r *gin.Engine, ltpHandler *handlers.LTPHandler, mutualFundsHandler *handlers.MutualFundsHandler, healthHandler *handlers.HealthHandler, backgroundTasksHandler *handlers.BackgroundTasksHandler, cryptoHandler *handlers.CryptoHandler) {
 	// API v1 group
 	v1 := r.Group("/api/v1")
 	{
@@ -24,6 +24,12 @@ func SetupRoutes(r *gin.Engine, ltpHandler *handlers.LTPHandler, mutualFundsHand
 		{
 			mutualFunds.GET("/:search_id", mutualFundsHandler.GetMutualFundHoldings)
 			mutualFunds.GET("/nav/:symbol", ltpHandler.GetMutualFundLTP)
+		}
+
+		// Crypto endpoints
+		crypto := v1.Group("/crypto")
+		{
+			crypto.GET("/price/:symbol", cryptoHandler.GetCryptoPrice)
 		}
 
 		// Symbol endpoints
