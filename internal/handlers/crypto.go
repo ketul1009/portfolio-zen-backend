@@ -56,7 +56,9 @@ func (h *CryptoHandler) GetCryptoPrice(c *gin.Context) {
 		return
 	}
 
-	// Return successful response with price
-	responses.SendSuccess(c, gin.H{"price": price})
+	// Return successful response with standardized format
+	responses.SendSuccess(c, gin.H{
+		"symbol": symbol,
+		"price":  price,
+	})
 }
-
