@@ -1,0 +1,169 @@
+name: Generate Commit Message
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened, edited]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  generate-commit-message:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.base.ref == 'master' && startsWith(github.event.pull_request.head.ref, 'release')
+    steps:
+      - name: Generate and post commit message
+        uses: actions/github-script@v6
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        with:
+          script: |
+            // Double-check branch conditions
+            const baseRef = context.payload.pull_request.base.ref;
+            const headRef = context.payload.pull_request.head.ref;
+            
+            if (baseRef !== 'master' || !headRef.startsWith('release')) {
+              core.info('Skipping: PR is from ' + headRef + ' to ' + baseRef);
+              return;
+            }
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+
+            const { data: commits } = await github.rest.pulls.listCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+
+            // Extract PR information
+            const prNumber = context.issue.number;
+            const author = pr.user.login;
+            const branch = pr.head.ref;
+            const latestCommit = commits[commits.length - 1];
+            const sha = latestCommit.sha.substring(0, 7);
+            const date = new Date(pr.created_at).toISOString().split('T')[0];
+
+            // Extract version from branch name (e.g., release/v1.2.3 -> v1.2.3)
+            const versionMatch = branch.match(/v?(\d+\.\d+\.\d+)/);
+            const version = versionMatch ? 'v' + versionMatch[1] : 'v0.0.0';
+
+            // Prepare context for OpenAI
+            const prTitle = pr.title;
+            const prBody = pr.body || '';
+            const commitMessages = commits.map(c => c.commit.message).join('\n');
+
+            // Build prompt for OpenAI
+            const prompt = 'You are a technical writer creating a detailed commit message for a software release.\n\n' +
+              'PR Title: ' + prTitle + '\n' +
+              'PR Description: ' + prBody + '\n' +
+              'Commit Messages in PR: ' + commitMessages + '\n\n' +
+              'Generate a detailed commit message following this EXACT format:\n\n' +
+              'First line (commit title):\n' +
+              'release: ' + version + ' – [brief descriptive title summarizing the main changes] (' + date + ')\n\n' +
+              'Then a blank line, followed by:\n\n' +
+              'Changelog:\n\n' +
+              '- [First change description]\n' +
+              '- [Second change description]\n' +
+              '- [Continue with all significant changes]\n\n' +
+              'Migration notes:\n\n' +
+              '- [First migration note if applicable]\n' +
+              '- [Second migration note if applicable]\n\n' +
+              'Instructions:\n' +
+              '- The commit title should be a concise summary (max 80 characters after "release: ' + version + ' – ")\n' +
+              '- Changelog should list all significant changes, improvements, and fixes based on the PR title, description, and commit messages\n' +
+              '- Migration notes should only be included if there are database migrations, environment variable changes, or deployment steps required\n' +
+              '- If there are no migration notes needed, include "Migration notes:" followed by a blank line\n' +
+              '- Use clear, technical language\n' +
+              '- Focus on what changed and why it matters\n' +
+              '- Do NOT include PR number, Author, Branch, SHA, or Date in your response - these will be added automatically\n\n' +
+              'Return ONLY the commit message content in the exact format above, starting with the title line.';
+
+            // Call OpenAI API
+            const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY,
+              },
+              body: JSON.stringify({
+                model: 'gpt-4',
+                messages: [
+                  {
+                    role: 'system',
+                    content: 'You are a technical writer specializing in creating detailed, accurate commit messages for software releases.',
+                  },
+                  {
+                    role: 'user',
+                    content: prompt,
+                  },
+                ],
+                temperature: 0.3,
+                max_tokens: 1000,
+              }),
+            });
+
+            if (!openaiResponse.ok) {
+              const error = await openaiResponse.text();
+              core.error('OpenAI API error: ' + error);
+              return;
+            }
+
+            const openaiData = await openaiResponse.json();
+            let generatedMessage = openaiData.choices[0].message.content.trim();
+
+            // Split the generated message into title and body (changelog + migration notes)
+            const lines = generatedMessage.split('\n');
+            const titleLine = lines[0];
+            const bodyStartIndex = lines.findIndex((line, idx) => idx > 0 && line.trim() === '') + 1;
+            const changelogAndMigration = lines.slice(bodyStartIndex).join('\n').trim();
+
+            // Construct the full commit body with PR metadata
+            const commitBody = 'PR: #' + prNumber + '\n\n' +
+              'Author: ' + author + '\n\n' +
+              'Branch: ' + branch + '\n\n' +
+              'SHA: ' + sha + '\n\n' +
+              'Date: ' + date + '\n\n' +
+              changelogAndMigration;
+
+            // Format the message according to the specified format
+            const formattedMessage = 'Commit title:\n\n' +
+              titleLine + '\n\n' +
+              'commit body:\n\n' +
+              commitBody + '\n\n' +
+              '---\n\n' +
+              '*This commit message was automatically generated using AI. Please review and adjust if needed.*';
+
+            // Check if a comment already exists from this bot
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(
+              comment => comment.user.type === 'Bot' && comment.body.includes('Commit title:')
+            );
+
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: formattedMessage,
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: formattedMessage,
+              });
+            }
+
