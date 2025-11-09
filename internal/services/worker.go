@@ -120,6 +120,28 @@ func (w *WorkerService) Start(broker *BrokerService, db *database.Client) {
 			}
 		}
 
+		// Fetch crypto prices
+		cryptoSymbols := make([]string, 0)
+		for _, asset := range portfolio {
+			if asset.Asset == "crypto" {
+				// CoinGecko API requires lowercase symbols, but we pass original symbol
+				// and let the broker service handle the conversion
+				cryptoSymbols = append(cryptoSymbols, asset.Symbol)
+			}
+		}
+
+		if len(cryptoSymbols) > 0 {
+			cryptoPrices, err := broker.GetMultipleCryptoPrices(cryptoSymbols)
+			if err != nil {
+				w.logger.Error("Error fetching crypto prices: %v", err)
+			} else {
+				// cryptoPrices map uses original symbols as keys (from broker service)
+				for symbol, price := range cryptoPrices {
+					priceData[symbol] = price
+				}
+			}
+		}
+
 		w.logger.Info("Price data: %v", priceData)
 
 		// Bulk update all prices in a single transaction
