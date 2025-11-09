@@ -1,0 +1,32 @@
+name: Validate PR title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  checks: write
+
+jobs:
+  title-check:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.base.ref == 'master' && github.event.pull_request.head.ref == 'release'
+    outputs:
+      ok: ${{ steps.check.outputs.ok }}
+    steps:
+      - name: Check PR title
+        id: check
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const title = context.payload.pull_request.title || '';
+            // Adjust regex to your preferred template
+            const re = /^release:\s*v?\d+\.\d+\.\d+\s*-\s*.+$/i;
+            const ok = re.test(title);
+            if (!ok) {
+              core.setFailed(
+                `Invalid PR title. Expected format: "release: vX.Y.Z - short description".\n` +
+                `Current title: "${title}"`
+              );
+            }
+            return { ok };
