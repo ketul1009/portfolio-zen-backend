@@ -60,8 +60,11 @@ func (h *LTPHandler) GetLTP(c *gin.Context) {
 	latency := time.Since(start)
 	h.logger.LogLTPRequest(symbol, token, ltp, latency)
 
-	// Return successful response
-	responses.SendLTPResponse(c, symbol, token, ltp)
+	// Return successful response with standardized format
+	responses.SendSuccess(c, gin.H{
+		"symbol": symbol,
+		"price":  ltp,
+	})
 }
 
 // GetMultipleLTP handles POST /api/ltp/batch requests
@@ -152,7 +155,7 @@ func (h *LTPHandler) GetAllSymbols(c *gin.Context) {
 	responses.SendSuccess(c, symbols)
 }
 
-// GetMutualFundLTP handles GET /api/mutual-funds/:symbol requests
+// GetMutualFundLTP handles GET /api/mutual-funds/nav/:symbol requests
 func (h *LTPHandler) GetMutualFundLTP(c *gin.Context) {
 	symbol := c.Param("symbol")
 	ltp, err := h.broker.GetMutualFundLTP(symbol)
@@ -161,5 +164,9 @@ func (h *LTPHandler) GetMutualFundLTP(c *gin.Context) {
 		responses.SendError(c, http.StatusInternalServerError, "error fetching mutual fund LTP")
 		return
 	}
-	responses.SendSuccess(c, ltp)
+	// Return successful response with standardized format
+	responses.SendSuccess(c, gin.H{
+		"symbol": symbol,
+		"price":  ltp,
+	})
 }
