@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"portfolio-zen-backend/internal/config"
 	"portfolio-zen-backend/internal/database"
@@ -15,6 +16,7 @@ import (
 	"portfolio-zen-backend/internal/logger"
 	"portfolio-zen-backend/internal/middleware"
 	"portfolio-zen-backend/internal/router"
+	"portfolio-zen-backend/internal/scheduler"
 	"portfolio-zen-backend/internal/services"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -34,6 +36,7 @@ type App struct {
 	server      *http.Server
 	redisClient *redis.Client
 	sqsClient   *sqs.Client
+	sched       *scheduler.Scheduler
 }
 
 // New creates a new application instance
@@ -74,6 +77,18 @@ func (a *App) Run() error {
 	// Initialize worker service
 	workerService := services.NewWorkerService(a.redisClient, a.logger)
 	go workerService.Start(a.broker, a.db)
+
+	// Initialize and start scheduler
+	a.sched = scheduler.NewScheduler()
+	_, err := a.sched.AddJob("* * * * *", func() {
+		a.logger.Info("Cron job executed at %s", time.Now().Format(time.RFC3339))
+		fmt.Println("Cron job executed")
+	})
+	if err != nil {
+		a.logger.Error("Error adding cron job: %v", err)
+	}
+	a.sched.Start()
+	defer a.sched.Stop()
 
 	// Initialize router
 	router := a.initRouter()
