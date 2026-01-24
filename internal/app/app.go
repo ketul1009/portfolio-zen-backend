@@ -8,11 +8,11 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"portfolio-zen-backend/internal/config"
 	"portfolio-zen-backend/internal/database"
 	"portfolio-zen-backend/internal/handlers"
+	"portfolio-zen-backend/internal/jobs"
 	"portfolio-zen-backend/internal/logger"
 	"portfolio-zen-backend/internal/middleware"
 	"portfolio-zen-backend/internal/router"
@@ -80,13 +80,15 @@ func (a *App) Run() error {
 
 	// Initialize and start scheduler
 	a.sched = scheduler.NewScheduler()
-	_, err := a.sched.AddJob("* * * * *", func() {
-		a.logger.Info("Cron job executed at %s", time.Now().Format(time.RFC3339))
-		fmt.Println("Cron job executed")
-	})
-	if err != nil {
-		a.logger.Error("Error adding cron job: %v", err)
+
+	// Register jobs
+	jobsDeps := jobs.Dependencies{
+		Logger: a.logger,
+		DB:     a.db,
+		Broker: a.broker,
 	}
+	jobs.RegisterJobs(a.sched, jobsDeps)
+
 	a.sched.Start()
 	defer a.sched.Stop()
 
