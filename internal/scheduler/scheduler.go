@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"log"
+	"time"
 
 	"github.com/robfig/cron/v3"
 )
@@ -13,11 +14,14 @@ type Scheduler struct {
 
 // NewScheduler creates a new scheduler instance
 func NewScheduler() *Scheduler {
-	// Create a new cron scheduler with seconds precision if needed,
-	// but standard cron usually does minutes.
-	// robfig/cron/v3 standard is minute-based.
-	// We can use cron.New() for standard parser.
-	c := cron.New()
+	// Load IST location
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		log.Printf("Error loading location Asia/Kolkata: %v, using Local", err)
+		loc = time.Local
+	}
+
+	c := cron.New(cron.WithLocation(loc))
 	return &Scheduler{
 		cron: c,
 	}
