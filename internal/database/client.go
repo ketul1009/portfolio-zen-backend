@@ -54,6 +54,17 @@ type Job struct {
 	JobType string `json:"job_type"`
 }
 
+// Portfolio represents a portfolio in the database
+type Portfolio struct {
+	ID          string    `json:"id"`
+	UserID      string    `json:"user_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Type        string    `json:"type"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 // NewClient creates a new database client
 func NewClient(cfg config.DatabaseConfig) (*Client, error) {
 	// Create connection string with simple protocol preference for PgBouncer compatibility
@@ -418,4 +429,56 @@ func (c *Client) UpdateJobStatus(jobID string, status string) error {
 		return fmt.Errorf("error updating job status: %w", err)
 	}
 	return nil
+}
+
+func (c *Client) GetPortfoliosByUser(userID string) ([]Portfolio, error) {
+	rows, err := c.DB.Query("SELECT id, user_id, name, description, type, created_at, updated_at FROM portfolios WHERE user_id = $1", userID)
+	if err != nil {
+		return nil, fmt.Errorf("error getting portfolios: %w", err)
+	}
+	defer rows.Close()
+
+	var portfolios []Portfolio
+	for rows.Next() {
+		var portfolio Portfolio
+		var description sql.NullString
+		if err := rows.Scan(&portfolio.ID, &portfolio.UserID, &portfolio.Name, &description, &portfolio.Type, &portfolio.CreatedAt, &portfolio.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("error scanning portfolio: %w", err)
+		}
+		if description.Valid {
+			portfolio.Description = description.String
+		}
+		portfolios = append(portfolios, portfolio)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating portfolios: %w", err)
+	}
+
+	return portfolios, nil
+}
+
+func (c *Client) GetUsersWithAutoUpdate() ([]string, error) {
+	//TODO: Introduce a new column in profiles table to store account configs
+	//CURRENTLY FETCHING ALL USERS
+	rows, err := c.DB.Query("SELECT user_id FROM profiles")
+	if err != nil {
+		return nil, fmt.Errorf("error getting users with auto update: %w", err)
+	}
+	defer rows.Close()
+
+	var users []string
+	for rows.Next() {
+		var user string
+		if err := rows.Scan(&user); err != nil {
+			return nil, fmt.Errorf("error scanning user: %w", err)
+		}
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating users: %w", err)
+	}
+
+	return users, nil
 }
