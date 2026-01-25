@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
 )
 
 // DBClient wraps the database connection
@@ -33,10 +33,10 @@ func NewDBClient() (*DBClient, error) {
 	port := os.Getenv("DB_PORT")
 
 	// Create connection string
-	connStr := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=require", host, user, password, dbname, port)
+	connStr := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=require default_query_exec_mode=simple_protocol", host, user, password, dbname, port)
 
 	// Open database connection
-	db, err := sql.Open("postgres", connStr)
+	db, err := sql.Open("pgx", connStr)
 	if err != nil {
 		return nil, fmt.Errorf("error opening database: %w", err)
 	}
