@@ -28,7 +28,7 @@ func RegisterJobs(s *scheduler.Scheduler, deps ScheduledJobDependencies) {
 	// 	deps.Logger.Error("Error adding sample cron job: %v", err)
 	// }
 
-	_, err := s.AddJob("@every 10s", func() {
+	_, err := s.AddJob("0 17 * * *", func() {
 		UpdatePortfolio(&deps)
 	})
 	if err != nil {
