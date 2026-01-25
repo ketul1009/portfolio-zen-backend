@@ -14,7 +14,7 @@ import (
 	"portfolio-zen-backend/internal/config"
 	"portfolio-zen-backend/internal/logger"
 
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // Client wraps the database connection with additional functionality
@@ -56,12 +56,12 @@ type Job struct {
 
 // NewClient creates a new database client
 func NewClient(cfg config.DatabaseConfig) (*Client, error) {
-	// Create connection string
-	connStr := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
+	// Create connection string with simple protocol preference for PgBouncer compatibility
+	connStr := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s default_query_exec_mode=simple_protocol",
 		cfg.Host, cfg.User, cfg.Password, cfg.Name, cfg.Port, cfg.SSLMode)
 
 	// Open database connection
-	db, err := sql.Open("postgres", connStr)
+	db, err := sql.Open("pgx", connStr)
 	if err != nil {
 		return nil, fmt.Errorf("error opening database: %w", err)
 	}
