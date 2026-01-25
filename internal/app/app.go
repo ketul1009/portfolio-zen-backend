@@ -82,10 +82,11 @@ func (a *App) Run() error {
 	a.sched = scheduler.NewScheduler()
 
 	// Register jobs
-	jobsDeps := jobs.Dependencies{
-		Logger: a.logger,
-		DB:     a.db,
-		Broker: a.broker,
+	jobsDeps := jobs.ScheduledJobDependencies{
+		Logger:      a.logger,
+		DB:          a.db,
+		Broker:      a.broker,
+		RedisClient: a.redisClient,
 	}
 	jobs.RegisterJobs(a.sched, jobsDeps)
 
