@@ -482,3 +482,26 @@ func (c *Client) GetUsersWithAutoUpdate() ([]string, error) {
 
 	return users, nil
 }
+
+func (c *Client) GetPortfoliosWithSIP() ([]string, error) {
+	rows, err := c.DB.Query("SELECT id FROM portfolios WHERE sip_enabled = true")
+	if err != nil {
+		return nil, fmt.Errorf("error getting portfolios with SIP: %w", err)
+	}
+	defer rows.Close()
+
+	var portfolios []string
+	for rows.Next() {
+		var portfolio string
+		if err := rows.Scan(&portfolio); err != nil {
+			return nil, fmt.Errorf("error scanning portfolio: %w", err)
+		}
+		portfolios = append(portfolios, portfolio)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating portfolios: %w", err)
+	}
+
+	return portfolios, nil
+}
