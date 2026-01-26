@@ -32,9 +32,16 @@ type SymbolToken struct {
 
 // AssetType
 type Asset struct {
-	ID     string `json:"id"`
-	Asset  string `json:"asset"`
-	Symbol string `json:"symbol"`
+	ID                string    `json:"id"`
+	AssetType         string    `json:"asset_type"`
+	Symbol            string    `json:"symbol"`
+	PurchasePrice     float64   `json:"purchase_price"`
+	Quantity          float64   `json:"quantity"`
+	SipEnabled        bool      `json:"sip_enabled"`
+	SipAmount         float64   `json:"sip_amount"`
+	SipFrequency      string    `json:"sip_frequency"`
+	SipStartDate      time.Time `json:"sip_start_date"`
+	NextExecutionDate time.Time `json:"next_execution_date"`
 }
 
 // Job represents a job in the database
@@ -203,7 +210,7 @@ func (c *Client) SearchSymbols(query string) ([]SymbolToken, error) {
 
 // Get Assets all assets in Portfolio
 func (c *Client) GetHoldings(portfolioId string) ([]Asset, error) {
-	rows, err := c.DB.Query("SELECT id, symbol, asset_type FROM assets WHERE portfolio_id = $1", portfolioId)
+	rows, err := c.DB.Query("SELECT id, symbol, shares, purchase_price, asset_type, sip_enabled, sip_amount, sip_frequency, sip_start_date, next_execution_date FROM assets WHERE portfolio_id = $1", portfolioId)
 	if err != nil {
 		if c.logger != nil {
 			c.logger.LogDatabaseError("GetHoldings", err)
@@ -216,12 +223,21 @@ func (c *Client) GetHoldings(portfolioId string) ([]Asset, error) {
 	var assets []Asset
 	for rows.Next() {
 		var asset Asset
-		if err := rows.Scan(&asset.ID, &asset.Symbol, &asset.Asset); err != nil {
+		var sipStartDate, nextExecutionDate sql.NullTime
+		var sipAmount sql.NullFloat64
+		var sipFrequency sql.NullString
+		var sipEnabled sql.NullBool
+		if err := rows.Scan(&asset.ID, &asset.Symbol, &asset.Quantity, &asset.PurchasePrice, &asset.AssetType, &sipEnabled, &sipAmount, &sipFrequency, &sipStartDate, &nextExecutionDate); err != nil {
 			if c.logger != nil {
 				c.logger.LogDatabaseError("GetHoldings scan", err)
 			}
 			return nil, fmt.Errorf("error scanning row: %w", err)
 		}
+		asset.SipEnabled = sipEnabled.Bool
+		asset.SipAmount = sipAmount.Float64
+		asset.SipFrequency = sipFrequency.String
+		asset.SipStartDate = sipStartDate.Time
+		asset.NextExecutionDate = nextExecutionDate.Time
 		assets = append(assets, asset)
 	}
 
@@ -280,6 +296,18 @@ func (c *Client) GetTokens(symbols []string) (map[string]string, error) {
 	}
 
 	return symbolToToken, nil
+}
+
+func (c *Client) GetToken(symbol string) (string, error) {
+	var token string
+	err := c.DB.QueryRow("SELECT token FROM stocks_list WHERE symbol = $1", symbol).Scan(&token)
+	if err != nil {
+		if c.logger != nil {
+			c.logger.LogDatabaseError("GetToken", err)
+		}
+		return "", err
+	}
+	return token, nil
 }
 
 // HealthCheck checks if the database is healthy
@@ -483,17 +511,17 @@ func (c *Client) GetUsersWithAutoUpdate() ([]string, error) {
 	return users, nil
 }
 
-func (c *Client) GetPortfoliosWithSIP() ([]string, error) {
-	rows, err := c.DB.Query("SELECT id FROM portfolios WHERE sip_enabled = true")
+func (c *Client) GetPortfoliosWithSIP() ([]Portfolio, error) {
+	rows, err := c.DB.Query("SELECT id, user_id FROM portfolios WHERE sip_enabled = true")
 	if err != nil {
 		return nil, fmt.Errorf("error getting portfolios with SIP: %w", err)
 	}
 	defer rows.Close()
 
-	var portfolios []string
+	var portfolios []Portfolio
 	for rows.Next() {
-		var portfolio string
-		if err := rows.Scan(&portfolio); err != nil {
+		var portfolio Portfolio
+		if err := rows.Scan(&portfolio.ID, &portfolio.UserID); err != nil {
 			return nil, fmt.Errorf("error scanning portfolio: %w", err)
 		}
 		portfolios = append(portfolios, portfolio)
@@ -504,4 +532,54 @@ func (c *Client) GetPortfoliosWithSIP() ([]string, error) {
 	}
 
 	return portfolios, nil
+}
+
+func (c *Client) BulkUpdateAssets(assets map[string]interface{}) error {
+
+	if len(assets) == 0 {
+		return nil
+	}
+
+	// Start a transaction
+	tx, err := c.DB.Begin()
+	if err != nil {
+		if c.logger != nil {
+			c.logger.LogDatabaseError("BulkUpdateAssets Begin", err)
+		}
+		return fmt.Errorf("error starting transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Prepare the bulk update statement
+	stmt, err := tx.Prepare("UPDATE assets SET purchase_price = $1, shares = $2, next_execution_date = $3 WHERE id = $4")
+	if err != nil {
+		if c.logger != nil {
+			c.logger.LogDatabaseError("BulkUpdateAssets Prepare", err)
+		}
+		return fmt.Errorf("error preparing statement: %w", err)
+	}
+	defer stmt.Close()
+
+	// Execute updates for each symbol
+	for id, data := range assets {
+		dataMap := data.(map[string]interface{})
+		_, err := stmt.Exec(dataMap["purchase_price"], dataMap["quantity"], dataMap["next_execution_date"], id)
+		if err != nil {
+			if c.logger != nil {
+				c.logger.LogDatabaseError("BulkUpdateAssets Exec", err)
+			}
+			return fmt.Errorf("error updating asset %s: %w", id, err)
+		}
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		if c.logger != nil {
+			c.logger.LogDatabaseError("BulkUpdateAssets Commit", err)
+		}
+		return fmt.Errorf("error committing transaction: %w", err)
+	}
+
+	return nil
+
 }
