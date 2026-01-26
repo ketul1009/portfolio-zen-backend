@@ -118,3 +118,23 @@ func FetchPrices(d *ScheduledJobDependencies, userID string, portfolioID string)
 	d.Logger.Info("[Cron] [FetchPrices] Successfully added CRON job %s to queue", job.ID)
 	return nil
 }
+
+func ProcessSips(d *ScheduledJobDependencies) error {
+	portfolios, err := d.DB.GetPortfoliosWithSIP()
+	if err != nil {
+		d.Logger.Error("[Cron] [ProcessSips] Error getting portfolios with SIP: %v", err)
+		return fmt.Errorf("error getting portfolios with SIP: %w", err)
+	}
+	for _, portfolio := range portfolios {
+		holdings, err := d.DB.GetHoldings(portfolio)
+		if err != nil {
+			d.Logger.Error("[Cron] [ProcessSips] Error getting holdings: %v", err)
+			return fmt.Errorf("error getting holdings: %w", err)
+		}
+
+		for _, holding := range holdings {
+			d.Logger.Info("[Cron] [ProcessSips] Processing SIP for %s", holding.Symbol)
+		}
+	}
+	return nil
+}
