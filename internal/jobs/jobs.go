@@ -72,7 +72,7 @@ func FetchPrices(d *ScheduledJobDependencies, userID string, portfolioID string)
 		}{
 			ID:        symbol.ID,
 			Symbol:    symbol.Symbol,
-			AssetType: symbol.Asset,
+			AssetType: symbol.AssetType,
 		})
 	}
 
@@ -126,15 +126,32 @@ func ProcessSips(d *ScheduledJobDependencies) error {
 		return fmt.Errorf("error getting portfolios with SIP: %w", err)
 	}
 	for _, portfolio := range portfolios {
-		holdings, err := d.DB.GetHoldings(portfolio)
-		if err != nil {
-			d.Logger.Error("[Cron] [ProcessSips] Error getting holdings: %v", err)
-			return fmt.Errorf("error getting holdings: %w", err)
+		job := database.Job{
+			ID:          uuid.New().String(),
+			UserID:      portfolio.UserID,
+			PortfolioID: portfolio.ID,
+			Data:        nil,
+			Status:      "pending",
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+			JobType:     "sip_update",
 		}
 
-		for _, holding := range holdings {
-			d.Logger.Info("[Cron] [ProcessSips] Processing SIP for %s", holding.Symbol)
+		d.DB.CreateJob(job)
+
+		jobJSON, err := json.Marshal(job)
+		if err != nil {
+			d.Logger.Error("[Cron] [ProcessSips] Error marshaling job: %v", err)
+			return fmt.Errorf("error creating job: %w", err)
 		}
+
+		err = d.RedisClient.RPush(context.Background(), "sip_update_jobs", jobJSON).Err()
+		if err != nil {
+			d.Logger.Error("[Cron] [ProcessSips] Error pushing job to Redis queue: %v", err)
+			return fmt.Errorf("failed to add job to queue: %w", err)
+		}
+
+		d.Logger.Info("[Cron] [ProcessSips] Successfully added CRON job %s to queue", job.ID)
 	}
 	return nil
 }

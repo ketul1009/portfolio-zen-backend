@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"portfolio-zen-backend/internal/config"
+	"portfolio-zen-backend/internal/database"
 	"portfolio-zen-backend/internal/logger"
 	"portfolio-zen-backend/internal/totp"
 
@@ -286,4 +287,22 @@ func (bs *BrokerService) HealthCheck() error {
 	}
 
 	return nil
+}
+
+// Single function to get LTP of any asset
+// TODO: Deprecate other functions
+func (bs *BrokerService) GetLTPOfAsset(db *database.Client, assetType string, symbol string, exchange string) (float64, error) {
+	if assetType == "stocks" {
+		token, err := db.GetToken(symbol)
+		if err != nil {
+			return 0, fmt.Errorf("error fetching token for symbol: %s", symbol)
+		}
+		return bs.GetLTP(exchange, symbol, token)
+	} else if assetType == "mutual_fund" {
+		return bs.GetMutualFundLTP(symbol)
+	} else if assetType == "crypto" {
+		return bs.GetCryptoPrice(symbol)
+	} else {
+		return 0, fmt.Errorf("unknown asset type: %s", assetType)
+	}
 }
