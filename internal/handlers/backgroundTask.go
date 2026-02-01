@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"portfolio-zen-backend/internal/database"
+	"portfolio-zen-backend/internal/jobs"
 	"portfolio-zen-backend/internal/logger"
 	"portfolio-zen-backend/internal/responses"
+	"portfolio-zen-backend/internal/services"
 	"strings"
 	"time"
 
@@ -24,6 +26,7 @@ type BackgroundTasksHandler struct {
 	redisClient *redis.Client
 	sqsClient   *sqs.Client
 	sqsQueueURL string
+	broker      *services.BrokerService
 }
 
 type Job struct {
@@ -38,14 +41,55 @@ type Job struct {
 	JobType string `json:"job_type"`
 }
 
-func NewBackgroundTaskHandler(db *database.Client, logger *logger.Logger, redisClient *redis.Client, sqsClient *sqs.Client, sqsQueueURL string) *BackgroundTasksHandler {
+func NewBackgroundTaskHandler(db *database.Client, logger *logger.Logger, redisClient *redis.Client, sqsClient *sqs.Client, sqsQueueURL string, broker *services.BrokerService) *BackgroundTasksHandler {
 	return &BackgroundTasksHandler{
 		db:          db,
 		logger:      logger,
 		redisClient: redisClient,
 		sqsClient:   sqsClient,
 		sqsQueueURL: sqsQueueURL,
+		broker:      broker,
 	}
+}
+
+// TriggerScheduledJob allows manual triggering of background jobs by name
+func (h *BackgroundTasksHandler) TriggerScheduledJob(c *gin.Context) {
+	var request struct {
+		JobName string `json:"job_name" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		h.logger.Error("Error binding JSON: %v", err)
+		responses.SendError(c, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	jobFunc, exists := jobs.JobRegistry[request.JobName]
+	if !exists {
+		h.logger.Error("Job not found: %s", request.JobName)
+		responses.SendError(c, http.StatusBadRequest, "job not found")
+		return
+	}
+
+	// Construct dependencies
+	deps := &jobs.ScheduledJobDependencies{
+		Logger:      h.logger,
+		DB:          h.db,
+		Broker:      h.broker,
+		RedisClient: h.redisClient,
+	}
+
+	// Run the job
+	go func() {
+		h.logger.Info("Manually triggering job: %s", request.JobName)
+		if err := jobFunc(deps); err != nil {
+			h.logger.Error("Error executing manually triggered job %s: %v", request.JobName, err)
+		} else {
+			h.logger.Info("Successfully executed manually triggered job: %s", request.JobName)
+		}
+	}()
+
+	responses.SendSuccess(c, map[string]string{"message": "Job triggered successfully", "job": request.JobName})
 }
 
 func (h *BackgroundTasksHandler) FetchPrices(c *gin.Context) {
