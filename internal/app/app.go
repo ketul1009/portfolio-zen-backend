@@ -237,7 +237,7 @@ func (a *App) initRouter() *gin.Engine {
 
 	// Get active SQS config based on environment
 	activeSQSConfig := a.config.GetActiveSQSConfig()
-	backgroundTaskHandler := handlers.NewBackgroundTaskHandler(a.db, a.logger, a.redisClient, a.sqsClient, activeSQSConfig.QueueURL)
+	backgroundTaskHandler := handlers.NewBackgroundTaskHandler(a.db, a.logger, a.redisClient, a.sqsClient, activeSQSConfig.QueueURL, a.broker)
 
 	// Setup routes
 	router.SetupRoutes(r, ltpHandler, mutualFundsHandler, healthHandler, backgroundTaskHandler, cryptoHandler)

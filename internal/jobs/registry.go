@@ -17,6 +17,11 @@ type ScheduledJobDependencies struct {
 	RedisClient *redis.Client
 }
 
+// JobRegistry maps job names to their execution functions
+var JobRegistry = map[string]func(deps *ScheduledJobDependencies) error{
+	"update_portfolio": UpdatePortfolio,
+}
+
 // RegisterJobs registers all the cron jobs
 func RegisterJobs(s *scheduler.Scheduler, deps ScheduledJobDependencies) {
 	// Sample Job: Log every minute
@@ -29,7 +34,9 @@ func RegisterJobs(s *scheduler.Scheduler, deps ScheduledJobDependencies) {
 	// }
 
 	_, err := s.AddJob("0 17 * * *", func() {
-		UpdatePortfolio(&deps)
+		if err := UpdatePortfolio(&deps); err != nil {
+			deps.Logger.Error("[Cron] [RegisterJobs] Error executing UpdatePortfolio: %v", err)
+		}
 	})
 	if err != nil {
 		deps.Logger.Error("[Cron] [RegisterJobs] Error adding UpdatePortfolio cron job: %v", err)
