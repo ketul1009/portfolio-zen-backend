@@ -147,7 +147,16 @@ func (bs *BrokerService) GetMutualFundLTP(symbol string) (float64, error) {
 		return 0, fmt.Errorf("error unmarshaling response: %w", err)
 	}
 
-	return responseData["nav"].(float64), nil
+	if errMsg, ok := responseData["error"].(string); ok && errMsg != "" {
+		return 0, fmt.Errorf("error fetching mutual fund NAV: %s", errMsg)
+	}
+
+	nav, ok := responseData["nav"].(float64)
+	if !ok {
+		return 0, fmt.Errorf("NAV not available for symbol: %s", symbol)
+	}
+
+	return nav, nil
 }
 
 // makeCoinGeckoRequest makes an HTTP request to CoinGecko API with the API key header
