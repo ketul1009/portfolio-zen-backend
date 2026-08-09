@@ -20,6 +20,7 @@ type ScheduledJobDependencies struct {
 // JobRegistry maps job names to their execution functions
 var JobRegistry = map[string]func(deps *ScheduledJobDependencies) error{
 	"update_portfolio": UpdatePortfolio,
+	"process_sips":     ProcessSips,
 }
 
 // RegisterJobs registers all the cron jobs
@@ -40,5 +41,14 @@ func RegisterJobs(s *scheduler.Scheduler, deps ScheduledJobDependencies) {
 	})
 	if err != nil {
 		deps.Logger.Error("[Cron] [RegisterJobs] Error adding UpdatePortfolio cron job: %v", err)
+	}
+
+	_, err = s.AddJob("0 17 * * *", func() {
+		if err := ProcessSips(&deps); err != nil {
+			deps.Logger.Error("[Cron] [RegisterJobs] Error executing ProcessSips: %v", err)
+		}
+	})
+	if err != nil {
+		deps.Logger.Error("[Cron] [RegisterJobs] Error adding ProcessSips cron job: %v", err)
 	}
 }
