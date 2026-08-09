@@ -1,6 +1,7 @@
 package services
 
 import (
+	"math"
 	"portfolio-zen-backend/internal/database"
 	"time"
 )
@@ -118,6 +119,8 @@ func BackgroundSIPUpdate(d *WorkerDependencies, job Job) {
 
 	sipData := make(map[string]interface{})
 
+	logger.Info("Processing SIPs for portfolio %s", portfolioID)
+
 	for _, asset := range portfolio {
 		if asset.SipEnabled && asset.NextExecutionDate.Before(time.Now()) {
 			ltp, err := broker.GetLTPOfAsset(d.DB, asset.AssetType, asset.Symbol, "NSE")
@@ -126,13 +129,18 @@ func BackgroundSIPUpdate(d *WorkerDependencies, job Job) {
 				continue
 			}
 			quantity := asset.SipAmount / ltp
+			if asset.AssetType == "stock" {
+				quantity = math.Floor(quantity)
+			} else {
+				quantity = roundToDecimal(quantity, 2)
+			}
 			newAveragePrice := (asset.PurchasePrice*asset.Quantity + asset.SipAmount) / (asset.Quantity + quantity)
 			newQuantity := asset.Quantity + quantity
 			sipFrequency := asset.SipFrequency
 			newNextExecutionDate := getNextExecutionDate(sipFrequency)
 
 			sipData[asset.ID] = map[string]interface{}{
-				"average_price":       newAveragePrice,
+				"purchase_price":      newAveragePrice,
 				"quantity":            newQuantity,
 				"next_execution_date": newNextExecutionDate,
 			}
@@ -146,6 +154,8 @@ func BackgroundSIPUpdate(d *WorkerDependencies, job Job) {
 		} else {
 			logger.Info("Successfully updated SIP for %d assets", len(sipData))
 		}
+	} else {
+		logger.Info("No SIPs to update for portfolio: %s", portfolioID)
 	}
 
 	err = db.UpdateJobStatus(job.ID, "completed")
@@ -169,4 +179,8 @@ func getNextExecutionDate(sipFrequency string) time.Time {
 	default:
 		return time.Now().AddDate(0, 1, 0)
 	}
+}
+
+func roundToDecimal(value float64, decimalPlaces int) float64 {
+	return math.Ceil(value*math.Pow10(decimalPlaces)) / math.Pow10(decimalPlaces)
 }

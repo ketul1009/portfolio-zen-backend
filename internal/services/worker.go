@@ -52,7 +52,7 @@ func (w *WorkerService) Start(broker *BrokerService, db *database.Client) {
 
 	for {
 		// BRPOP with 5-second timeout to avoid indefinite blocking
-		res, err := w.redisClient.BRPop(ctx, 5*time.Second, "price_update_jobs").Result()
+		res, err := w.redisClient.BRPop(ctx, 5*time.Second, "price_update_jobs", "sip_update_jobs").Result()
 		if err != nil {
 			// Only log if it's not a timeout or EOF error (which are expected when no jobs)
 			if err != redis.Nil && !errors.Is(err, io.EOF) {
