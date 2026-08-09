@@ -301,7 +301,7 @@ func (bs *BrokerService) HealthCheck() error {
 // Single function to get LTP of any asset
 // TODO: Deprecate other functions
 func (bs *BrokerService) GetLTPOfAsset(db *database.Client, assetType string, symbol string, exchange string) (float64, error) {
-	if assetType == "stocks" {
+	if assetType == "stock" {
 		token, err := db.GetToken(symbol)
 		if err != nil {
 			return 0, fmt.Errorf("error fetching token for symbol: %s", symbol)
