@@ -131,6 +131,8 @@ func BackgroundSIPUpdate(d *WorkerDependencies, job Job) {
 			quantity := asset.SipAmount / ltp
 			if asset.AssetType == "stock" {
 				quantity = math.Floor(quantity)
+			} else {
+				quantity = roundToDecimal(quantity, 2)
 			}
 			newAveragePrice := (asset.PurchasePrice*asset.Quantity + asset.SipAmount) / (asset.Quantity + quantity)
 			newQuantity := asset.Quantity + quantity
@@ -177,4 +179,8 @@ func getNextExecutionDate(sipFrequency string) time.Time {
 	default:
 		return time.Now().AddDate(0, 1, 0)
 	}
+}
+
+func roundToDecimal(value float64, decimalPlaces int) float64 {
+	return math.Ceil(value*math.Pow10(decimalPlaces)) / math.Pow10(decimalPlaces)
 }
